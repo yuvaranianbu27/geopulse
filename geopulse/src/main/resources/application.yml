@@ -20,6 +20,21 @@ spring:
       properties:
         spring.json.trusted.packages: "com.yuva.geopulse.*"
 
+app:
+  geo:
+    redis-key: drivers:geo
+  kafka:
+    topic: driver-locations
+
 server:
   port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
 
