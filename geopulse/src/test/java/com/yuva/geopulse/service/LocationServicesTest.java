@@ -4,9 +4,16 @@ import com.yuva.geopulse.config.KafkaConfig;
 import com.yuva.geopulse.model.DriverLocationEvent;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.geo.*;
+import org.springframework.data.redis.connection.RedisGeoCommands;
+import org.springframework.data.redis.core.ReactiveGeoOperations;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -54,6 +61,50 @@ class LocationServicesTest {
         assertEquals("latitude and longitude are required", missingCoordinatesException.getMessage());
 
         verifyNoInteractions(kafkaTemplate);
+    }
+
+    @Test
+    void findNearbyDrivers_shouldReturnMatchingLocations() {
+        ReactiveStringRedisTemplate redisTemplate = mock(ReactiveStringRedisTemplate.class);
+        ReactiveGeoOperations<String, String> geoOperations = mock(ReactiveGeoOperations.class);
+        when(redisTemplate.opsForGeo()).thenReturn(geoOperations);
+
+        GeoResult<RedisGeoCommands.GeoLocation<String>> result = new GeoResult<>(
+                new RedisGeoCommands.GeoLocation<>("driver-42", new Point(-74.0060, 40.7128)),
+                new Distance(1.2, Metrics.KILOMETERS)
+        );
+        when(geoOperations.radius(anyString(), any(Circle.class), any(RedisGeoCommands.GeoRadiusCommandArgs.class)))
+                .thenReturn(Flux.just(result));
+
+        MatchingService service = new MatchingService(redisTemplate, "drivers:geo");
+
+        List<GeoResult<RedisGeoCommands.GeoLocation<String>>> matches = service
+                .findNearbyDrivers(-74.0060, 40.7128, 3.0, 5)
+                .collectList()
+                .block();
+
+        assertEquals(1, matches.size());
+        assertEquals("driver-42", matches.get(0).getContent().getName());
+        assertEquals(1.2, matches.get(0).getDistance().getValue(), 0.01);
+        verify(geoOperations).radius(eq("drivers:geo"), any(Circle.class), any(RedisGeoCommands.GeoRadiusCommandArgs.class));
+    }
+
+    @Test
+    void findNearbyDrivers_shouldRejectInvalidRadiusAndLimit() {
+        ReactiveStringRedisTemplate redisTemplate = mock(ReactiveStringRedisTemplate.class);
+        MatchingService service = new MatchingService(redisTemplate, "drivers:geo");
+
+        IllegalArgumentException radiusException = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.findNearbyDrivers(-74.0060, 40.7128, 0.0, 5).collectList().block()
+        );
+        assertEquals("radiusKm must be greater than 0", radiusException.getMessage());
+
+        IllegalArgumentException limitException = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.findNearbyDrivers(-74.0060, 40.7128, 3.0, 0).collectList().block()
+        );
+        assertEquals("limit must be greater than 0", limitException.getMessage());
     }
 
 
