@@ -106,6 +106,34 @@ class LocationServicesTest {
         );
         assertEquals("limit must be greater than 0", limitException.getMessage());
     }
+    @Test
+    void consume_shouldWriteValidDriverLocationToGeoIndex() {
+        ReactiveStringRedisTemplate redisTemplate = mock(ReactiveStringRedisTemplate.class);
+        ReactiveGeoOperations<String, String> geoOperations = mock(ReactiveGeoOperations.class);
+        when(redisTemplate.opsForGeo()).thenReturn(geoOperations);
+        when(geoOperations.add(eq("drivers:geo"), any(Point.class), eq("driver-42"))).thenReturn(Mono.just(1L));
+
+        LocationConsumerService service = new LocationConsumerService(redisTemplate, "drivers:geo");
+        DriverLocationEvent event = new DriverLocationEvent("driver-42", 40.7128, -74.0060, 1720000000000L);
+
+        service.consume(event);
+
+        verify(geoOperations).add(eq("drivers:geo"), any(Point.class), eq("driver-42"));
+    }
+
+    @Test
+    void consume_shouldIgnoreInvalidDriverEvents() {
+        ReactiveStringRedisTemplate redisTemplate = mock(ReactiveStringRedisTemplate.class);
+        ReactiveGeoOperations<String, String> geoOperations = mock(ReactiveGeoOperations.class);
+        when(redisTemplate.opsForGeo()).thenReturn(geoOperations);
+
+        LocationConsumerService service = new LocationConsumerService(redisTemplate, "drivers:geo");
+
+        service.consume(null);
+        service.consume(new DriverLocationEvent("", 40.7128, -74.0060, 1720000000000L));
+
+        verifyNoInteractions(geoOperations);
+    }
 
 
 }
