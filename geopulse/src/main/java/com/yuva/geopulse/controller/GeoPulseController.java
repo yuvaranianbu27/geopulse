@@ -5,6 +5,10 @@ import com.yuva.geopulse.model.NearbyDriverResponse;
 import com.yuva.geopulse.model.RiderSearchRequest;
 import com.yuva.geopulse.service.LocationProducerService;
 import com.yuva.geopulse.service.MatchingService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.redis.connection.RedisGeoCommands;
@@ -17,6 +21,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/geopulse")
+@Tag(name = "GeoPulse API", description = "Driver location ingestion and nearby driver matching endpoints")
 public class GeoPulseController {
 
     private final LocationProducerService producerService;
@@ -28,6 +33,11 @@ public class GeoPulseController {
     }
 
     @PostMapping("/driver/ping")
+    @Operation(summary = "Publish a driver location update", description = "Accepts a driver location event and queues it to Kafka for downstream processing.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "202", description = "Location event accepted and queued successfully"),
+            @ApiResponse(responseCode = "400", description = "Request validation failed")
+    })
     public Mono<ResponseEntity<Map<String, Object>>> ingestDriverPing(@Valid @RequestBody DriverLocationEvent event) {
         return producerService.publishDriverLocation(event)
                 .thenReturn(ResponseEntity.accepted().body(Map.of(
@@ -38,6 +48,11 @@ public class GeoPulseController {
     }
 
     @GetMapping("/rider/match")
+    @Operation(summary = "Find nearby drivers", description = "Returns drivers whose locations are within the given radius and limit from the rider coordinates.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Nearby drivers returned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid rider search parameters")
+    })
     public Flux<NearbyDriverResponse> matchRider(@Valid @ModelAttribute RiderSearchRequest request) {
         return matchingService.findNearbyDrivers(request.getLongitude(), request.getLatitude(), request.getRadiusKm(), request.getLimit())
                 .map(this::toNearbyDriverResponse);
