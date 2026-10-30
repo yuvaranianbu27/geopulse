@@ -21,8 +21,14 @@ public class KafkaConfig {
 
     public static final String DRIVER_LOCATION_TOPIC = "driver-locations";
 
-    @Value("${app.kafka.topic:driver-locations}")
-    private String driverLocationTopic;
+    @Bean
+    public NewTopic driverLocationTopic(AppProperties appProperties) {
+        String topic = appProperties.kafka().topic();
+        return TopicBuilder.name(topic)
+                .partitions(3)
+                .replicas(1)
+                .build();
+    }
 
     @Bean
     public NewTopic driverLocationTopic() {
